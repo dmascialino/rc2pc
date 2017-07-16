@@ -1,0 +1,5 @@
+croniter==0.3.17
+feedgen==0.5.1
+PyYAML==3.12
+radiocut-downloader==0.2.1
+slugify==0.0.1
