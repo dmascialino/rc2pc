@@ -31,6 +31,14 @@ is given and the history file exists, it will error out. Of course, the
 history file needs to be present if no ``--since`` is indicated.
 
 
+Config file
+-----------
+
+The config file should be a YAML file with the following structure::
+
+    FIXME: to be done
+
+
 How to use
 ----------
 
