@@ -9,7 +9,6 @@ import subprocess
 import bunch
 import croniter
 import dateutil.parser
-import dateutil.tz
 import pytz
 import yaml
 from feedgen.feed import FeedGenerator
@@ -70,7 +69,7 @@ def get_episodes(show, last_process):
     """Get episodes for a given show."""
     # get a timezone for the show, and a "now" for that timezone
     showlocal_tz = pytz.timezone(show.timezone)
-    utc_now = datetime.datetime.now(dateutil.tz.tzutc())
+    utc_now = pytz.utc.localize(datetime.datetime.utcnow())
     showlocal_now = utc_now.astimezone(showlocal_tz)
 
     from_cron = croniter.croniter(show.cron, last_process)
