@@ -1,5 +1,6 @@
+bunch==1.0.1
 croniter==0.3.17
 feedgen==0.5.1
+pytz==2016.10
 PyYAML==3.12
-radiocut-downloader==0.2.1
-slugify==0.0.1
+git+https://github.com/mgaitan/radiocut_downloader.git@f0d74eb50609a892db000aa933e85667c6f6cf4a

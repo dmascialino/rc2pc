@@ -10,7 +10,7 @@ Generic syntax
 
 ::
 
-    rc2pc.py [--since][--quiet] pc_dir history_file config_file
+    rc2pc.py [--since][--quiet][--show] pc_dir history_file config_file
 
 where:
 
@@ -19,6 +19,9 @@ where:
 - ``--since`` (optional): is a timestamp in the format YYYY-MM-DD for
   the program to get stuff from that when
 
+- ``--show``: is the show id as specified in the config (otherwise it will
+  work on all the shows from the config)
+
 - ``pc_dir``: is the directory where the podcast stuff will be dump
 
 - ``history_file``: where the timestamp of last run is stored
@@ -26,17 +29,41 @@ where:
 - ``config_file``: is a yaml with all the proper shows info (see below)
 
 If ``--since`` is given, program will get shows from there and save the
-timestamp in the indicated ``history_file``. To avoid mistakes, if ``--since``
-is given and the history file exists, it will error out. Of course, the
-history file needs to be present if no ``--since`` is indicated.
+timestamp in the indicated ``history_file``. The ``--since`` timestamp
+overrides what is indicated in the history file.
 
 
 Config file
 -----------
 
-The config file should be a YAML file with the following structure::
+The config file should be a YAML file with the show(s) information, each
+show having an id and some info (and repeat everything for each show you
+want to podcast)::
 
-    FIXME: to be done
+  show_id:
+        name: The Show Name
+        description: A description for the show
+        station: the station name as appears in radiocut
+        cron: a string with crontab info in "m h dom mon dow" format,
+              indicating when the show starts
+        timezone: the timezone used when writing the cron hours
+        duration: the show duration (in seconds)
+        author:
+            name: the author name
+            email: the author email
+
+Example for one show::
+
+    gentedeapie:
+        name: La vida en particular
+        description: Programa de los Sábados de Mario Wainfeld
+        station: nacional870
+        cron: "00   10    *     *     6"  # m h dom mon dow
+        timezone: America/Buenos_Aires
+        duration: 10800  # 3hs in seconds
+        author:
+            name: rc2pc
+            email: rc2pc@nomail.com
 
 
 How to use
