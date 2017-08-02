@@ -15,7 +15,6 @@ from feedgen.feed import FeedGenerator
 
 
 # TODO:
-# - read the yaml from disk (given in command line)
 # - add an mp3 tag to the generated files (??)
 # - support logging (with --quiet)
 # - support receiving the podcast dir
@@ -27,7 +26,7 @@ BASE_PUBLIC_URL = "http://localhost:8000/"
 
 RADIOCUT_CMD = (
     'radiocut http://radiocut.fm/radiostation/{station}/listen/{dt:%Y/%m/%d/%H/%M/%S}/ '
-    '"{fname}" --duration={duration}'
+    '"{filepath}" --duration={duration}'
 )
 
 
@@ -36,36 +35,23 @@ RADIOCUT_CMD = (
 BORDER_DELTA = datetime.timedelta(minutes=3)
 
 
-SHOWS = """
-gentedeapie:
-    name: La vida en particular
-    description: El programa de Wainfeld
-    station: nacional870
-    cron: "00   10    *     *     6"  # m h (local) dom mon dow
-    timezone: America/Buenos_Aires
-    duration: 10800  # 3hs in seconds
-    author:
-        name: RC
-        email: dmascialino@gmail.com
-"""
-
-
-def download(show, start_datetime):
+def download(show, start_datetime, podcast_dir):
     """Download a given show at a specific hour."""
     # build the filename with the show id and the show hours
     fname = "{name}_{date:%Y-%m-%d}".format(date=start_datetime, name=show.id)
+    filepath = os.path.join(podcast_dir, fname)
 
     # start to download a little before the show begins, and finish a little later
     dtime = start_datetime - BORDER_DELTA
     duration = show.duration + BORDER_DELTA.seconds * 2
 
     # build the command and download
-    cmd = RADIOCUT_CMD.format(station=show.station, dt=dtime, duration=duration, fname=fname)
+    cmd = RADIOCUT_CMD.format(station=show.station, dt=dtime, duration=duration, filepath=filepath)
     print("Downloading show with cmd", repr(cmd))
     subprocess.run(cmd, shell=True, check=True)
 
 
-def get_episodes(show, last_process):
+def get_episodes(show, last_process, podcast_dir):
     """Get episodes for a given show."""
     # get a timezone for the show, and a "now" for that timezone
     showlocal_tz = pytz.timezone(show.timezone)
@@ -86,14 +72,14 @@ def get_episodes(show, last_process):
             break
 
         print("Downloading")
-        download(show, showlocal_next_date)
+        download(show, showlocal_next_date, podcast_dir)
         last_process = showlocal_next_date
 
-    write_podcast(show)
+    write_podcast(show, podcast_dir)
     return last_process
 
 
-def write_podcast(show):
+def write_podcast(show, podcast_dir):
     """Create the podcast file."""
     fg = FeedGenerator()
     fg.load_extension('podcast')
@@ -106,7 +92,7 @@ def write_podcast(show):
     fg.link(href=url, rel='self')
 
     # collect all mp3s for the given show
-    all_mp3s = glob.glob("{}_*.mp3".format(show.id))
+    all_mp3s = glob.glob(os.path.join(podcast_dir, "{}_*.mp3".format(show.id)))
 
     for fname in all_mp3s:
         fe = fg.add_entry()
@@ -115,7 +101,7 @@ def write_podcast(show):
         fe.enclosure('{}{}'.format(BASE_PUBLIC_URL, fname), 0, 'audio/mpeg')
 
     fg.rss_str(pretty=True)
-    fg.rss_file('{}.xml'.format(show.id))
+    fg.rss_file(os.path.join(podcast_dir, '{}.xml'.format(show.id)))
 
 
 class HistoryFile:
@@ -152,26 +138,52 @@ class HistoryFile:
         self._save()
 
 
-def main(history_file_path, since=None, selected_show=None):
-    """Main entry point."""
-    # open the history file
-    history_file = HistoryFile(history_file_path)
+def load_config(config_file_path, selected_show):
+    """Load the configuration file and validate format."""
+    with open(config_file_path, 'rt', encoding='utf8') as fh:
+        from_config_file = yaml.load(fh)
 
-    # open the config file
-    # FIXME: handle a real file here!!
-    # FIXME: validate format!!
+    if not isinstance(from_config_file, dict):
+        raise ValueError("Bad general config format, must be a dict/map.")
+
+    base_keys = {'name', 'description', 'station', 'cron', 'timezone', 'duration', 'author'}
+    author_keys = {'name', 'email'}
+
     config_data = []
-    from_config_file = yaml.load(SHOWS)
     for show_id, show_data in from_config_file.items():
         if not show_id.isalnum():
-            print("Bad format for show id (must be alphanumerical)", repr(show_id))
-            exit()
+            raise ValueError(
+                "Bad format for show id {!r} (must be alphanumerical)".format(show_id))
 
         if selected_show is not None and selected_show != show_id:
             print("Ignoring config because not selected show:", repr(show_id))
             continue
 
+        missing = set(show_data) - base_keys
+        if missing:
+            raise ValueError("Missing keys {} for show id {}".format(missing, show_id))
+
+        missing = set(show_data['author']) - author_keys
+        if missing:
+            raise ValueError("Missing keys {} for AUTHOR in show id {}".format(missing, show_id))
+
         config_data.append(bunch.Bunch(show_data, id=show_id))
+
+    return config_data
+
+
+def main(history_file_path, podcast_dir, config_file_path, since=None, selected_show=None):
+    """Main entry point."""
+    # open the history file
+    history_file = HistoryFile(history_file_path)
+
+    # open the config file
+    try:
+        config_data = load_config(config_file_path, selected_show)
+    except ValueError as exc:
+        print("ERROR loading config:", exc)
+        exit()
+
     print("Loaded config for shows", sorted(x.id for x in config_data))
 
     for show_data in config_data:
@@ -185,18 +197,20 @@ def main(history_file_path, since=None, selected_show=None):
             print("ERROR: Must indicate a start point in time "
                   "(through history file or --since parameter")
             exit()
-        last_run = get_episodes(show_data, last_process)
-        history_file.set(show_id, last_run)
+        last_run = get_episodes(show_data, last_process, podcast_dir)
+        history_file.set(show_data.id, last_run)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--since', help="A date (YYYY-MM--DD) to get stuff since.")
     parser.add_argument('--show', help="Work with this show only.")
-    parser.add_argument('history_file', metavar='history-file', help="The file to store last run")
+    parser.add_argument('podcast_dir', help="The directory where podcast files will be stored")
+    parser.add_argument('history_file', help="The file to store last run")
+    parser.add_argument('config_file', help="The configuration file")
     args = parser.parse_args()
 
     # parse input
     since = None if args.since is None else dateutil.parser.parse(args.since)
 
-    main(args.history_file, since, args.show)
+    main(args.history_file, args.podcast_dir, args.config_file, since, args.show)

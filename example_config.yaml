@@ -1,0 +1,10 @@
+gentedeapie:
+    name: La vida en particular
+    description: El programa de Wainfeld
+    station: nacional870
+    cron: "00   10    *     *     6"  # m h (local) dom mon dow
+    timezone: America/Buenos_Aires
+    duration: 10800  # 3hs in seconds
+    author:
+        name: RC
+        email: dmascialino@gmail.com
