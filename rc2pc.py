@@ -17,11 +17,6 @@ from feedgen.feed import FeedGenerator
 # TODO:
 # - add an mp3 tag to the generated files (??)
 # - support logging (with --quiet)
-# - support receiving the podcast dir
-# - put the BASE_PUBLIC_URL as part of the config
-
-
-BASE_PUBLIC_URL = "http://localhost:8000/"
 
 
 RADIOCUT_CMD = (
@@ -51,54 +46,73 @@ def download(show, start_datetime, podcast_dir):
     subprocess.run(cmd, shell=True, check=True)
 
 
-def get_episodes(show, last_process, podcast_dir):
+def get_episodes(show, last_process, podcast_dir, base_public_url):
     """Get episodes for a given show."""
     # get a timezone for the show, and a "now" for that timezone
     showlocal_tz = pytz.timezone(show.timezone)
     utc_now = pytz.utc.localize(datetime.datetime.utcnow())
     showlocal_now = utc_now.astimezone(showlocal_tz)
 
+    if last_process.tzinfo is None:
+        # need to localize
+        last_process = showlocal_tz.localize(last_process)
+
     from_cron = croniter.croniter(show.cron, last_process)
     while True:
         next_date = from_cron.get_next(datetime.datetime)
-        showlocal_next_date = showlocal_tz.localize(next_date)
-        print("Checking next date", showlocal_next_date)
-        if showlocal_next_date > showlocal_now:
+        print("Checking next date", next_date)
+        if next_date > showlocal_now:
             print("Next date is after now, quit")
             break
 
-        if showlocal_next_date + datetime.timedelta(seconds=show.duration) > showlocal_now:
+        if next_date + datetime.timedelta(seconds=show.duration) > showlocal_now:
             print("Show currently in the air, quit")
             break
 
         print("Downloading")
-        download(show, showlocal_next_date, podcast_dir)
-        last_process = showlocal_next_date
+        download(show, next_date, podcast_dir)
+        last_process = next_date
 
-    write_podcast(show, podcast_dir)
+    write_podcast(show, podcast_dir, base_public_url, showlocal_tz)
     return last_process
 
 
-def write_podcast(show, podcast_dir):
+def _get_date_from_mp3_path(filepath, showlocal_tz):
+    """Parse the mp3 filepath (which we build) and retrieve the date."""
+    date_str = os.path.basename(filepath).split(".")[0].split("_")[-1]
+    date = dateutil.parser.parse(date_str)
+    return showlocal_tz.localize(date)
+
+
+def write_podcast(show, podcast_dir, base_public_url, showlocal_tz):
     """Create the podcast file."""
     fg = FeedGenerator()
     fg.load_extension('podcast')
 
-    url = "{}{}.xml".format(BASE_PUBLIC_URL, show.id)
+    url = "{}{}.xml".format(base_public_url, show.id)
     fg.id(url.split('.')[0])
     fg.title(show.name)
-    fg.author(show.author)
+    fg.image(show.image_url)
     fg.description(show.description)
     fg.link(href=url, rel='self')
 
     # collect all mp3s for the given show
     all_mp3s = glob.glob(os.path.join(podcast_dir, "{}_*.mp3".format(show.id)))
 
-    for fname in all_mp3s:
+    for filepath in all_mp3s:
+        filename = os.path.basename(filepath)
+        mp3_date = _get_date_from_mp3_path(filepath, showlocal_tz)
+        mp3_size = os.stat(filepath).st_size
+        mp3_url = base_public_url + filename
+        mp3_id = filename.split('.')[0]
+        title = "Programa del {0:%d}/{0:%m}/{0:%Y}".format(mp3_date)
+
+        # build the rss entry
         fe = fg.add_entry()
-        fe.id(url.split('.')[0])
-        fe.title(fname.split('.')[0])
-        fe.enclosure('{}{}'.format(BASE_PUBLIC_URL, fname), 0, 'audio/mpeg')
+        fe.id(mp3_id)
+        fe.pubdate(mp3_date)
+        fe.title(title)
+        fe.enclosure(mp3_url, str(mp3_size), 'audio/mpeg')
 
     fg.rss_str(pretty=True)
     fg.rss_file(os.path.join(podcast_dir, '{}.xml'.format(show.id)))
@@ -146,8 +160,7 @@ def load_config(config_file_path, selected_show):
     if not isinstance(from_config_file, dict):
         raise ValueError("Bad general config format, must be a dict/map.")
 
-    base_keys = {'name', 'description', 'station', 'cron', 'timezone', 'duration', 'author'}
-    author_keys = {'name', 'email'}
+    base_keys = {'name', 'description', 'station', 'cron', 'timezone', 'duration', 'image_url'}
 
     config_data = []
     for show_id, show_data in from_config_file.items():
@@ -159,20 +172,17 @@ def load_config(config_file_path, selected_show):
             print("Ignoring config because not selected show:", repr(show_id))
             continue
 
-        missing = set(show_data) - base_keys
+        missing = base_keys - set(show_data)
         if missing:
             raise ValueError("Missing keys {} for show id {}".format(missing, show_id))
-
-        missing = set(show_data['author']) - author_keys
-        if missing:
-            raise ValueError("Missing keys {} for AUTHOR in show id {}".format(missing, show_id))
 
         config_data.append(bunch.Bunch(show_data, id=show_id))
 
     return config_data
 
 
-def main(history_file_path, podcast_dir, config_file_path, since=None, selected_show=None):
+def main(history_file_path, podcast_dir, config_file_path, base_public_url,
+         since=None, selected_show=None):
     """Main entry point."""
     # open the history file
     history_file = HistoryFile(history_file_path)
@@ -197,7 +207,7 @@ def main(history_file_path, podcast_dir, config_file_path, since=None, selected_
             print("ERROR: Must indicate a start point in time "
                   "(through history file or --since parameter")
             exit()
-        last_run = get_episodes(show_data, last_process, podcast_dir)
+        last_run = get_episodes(show_data, last_process, podcast_dir, base_public_url)
         history_file.set(show_data.id, last_run)
 
 
@@ -208,9 +218,11 @@ if __name__ == '__main__':
     parser.add_argument('podcast_dir', help="The directory where podcast files will be stored")
     parser.add_argument('history_file', help="The file to store last run")
     parser.add_argument('config_file', help="The configuration file")
+    parser.add_argument('base_public_url', help="The public URL from where the podcast is served")
     args = parser.parse_args()
 
     # parse input
     since = None if args.since is None else dateutil.parser.parse(args.since)
 
-    main(args.history_file, args.podcast_dir, args.config_file, since, args.show)
+    main(args.history_file, args.podcast_dir, args.config_file, args.base_public_url,
+         since, args.show)
