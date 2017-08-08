@@ -10,7 +10,8 @@ Generic syntax
 
 ::
 
-    rc2pc.py [--since][--quiet][--show] pc_dir history_file config_file
+    rc2pc.py [--since][--quiet][--show]
+        pc_dir history_file config_file base_public_url
 
 where:
 
@@ -27,6 +28,8 @@ where:
 - ``history_file``: where the timestamp of last run is stored
 
 - ``config_file``: is a yaml with all the proper shows info (see below)
+
+- ``base_public_url``: is the base URL on which the podcast RSS is served
 
 If ``--since`` is given, program will get shows from there and save the
 timestamp in the indicated ``history_file``. The ``--since`` timestamp
@@ -48,9 +51,7 @@ want to podcast)::
               indicating when the show starts
         timezone: the timezone used when writing the cron hours
         duration: the show duration (in seconds)
-        author:
-            name: the author name
-            email: the author email
+        image_url: the URL of an image representing the show
 
 Example for one show::
 
@@ -61,9 +62,7 @@ Example for one show::
         cron: "00   10    *     *     6"  # m h dom mon dow
         timezone: America/Buenos_Aires
         duration: 10800  # 3hs in seconds
-        author:
-            name: rc2pc
-            email: rc2pc@nomail.com
+        image_url: http://noserver.com/gentedeapie.jpeg
 
 
 How to use
