@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import glob
+import logging
 import os
 import subprocess
 
@@ -13,10 +14,11 @@ import pytz
 import yaml
 from feedgen.feed import FeedGenerator
 
-
-# TODO:
-# - add an mp3 tag to the generated files (??)
-# - support logging (with --quiet)
+logger = logging.getLogger()
+h = logging.StreamHandler()
+h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-10s %(message)s"))
+logger.addHandler(h)
+logger.setLevel(logging.INFO)
 
 
 RADIOCUT_CMD = (
@@ -36,13 +38,13 @@ def download(show, start_datetime, podcast_dir):
     fname = "{name}_{date:%Y-%m-%d}".format(date=start_datetime, name=show.id)
     filepath = os.path.join(podcast_dir, fname)
 
-    # start to download a little before the show begins, and finish a little later
-    dtime = start_datetime - BORDER_DELTA
-    duration = show.duration + BORDER_DELTA.seconds * 2
+    # finish to download a little later, just in case the show extends
+    dtime = start_datetime
+    duration = show.duration + BORDER_DELTA.seconds
 
     # build the command and download
     cmd = RADIOCUT_CMD.format(station=show.station, dt=dtime, duration=duration, filepath=filepath)
-    print("Downloading show with cmd", repr(cmd))
+    logger.info("Downloading show with cmd %r", cmd)
     subprocess.run(cmd, shell=True, check=True)
 
 
@@ -60,16 +62,16 @@ def get_episodes(show, last_process, podcast_dir, base_public_url):
     from_cron = croniter.croniter(show.cron, last_process)
     while True:
         next_date = from_cron.get_next(datetime.datetime)
-        print("Checking next date", next_date)
+        logger.info("Checking next date: %s", next_date)
         if next_date > showlocal_now:
-            print("Next date is after now, quit")
+            logger.info("Next date is after now, quit")
             break
 
         if next_date + datetime.timedelta(seconds=show.duration) > showlocal_now:
-            print("Show currently in the air, quit")
+            logger.info("Show currently in the air, quit")
             break
 
-        print("Downloading")
+        logger.info("Downloading")
         download(show, next_date, podcast_dir)
         last_process = next_date
 
@@ -169,7 +171,7 @@ def load_config(config_file_path, selected_show):
                 "Bad format for show id {!r} (must be alphanumerical)".format(show_id))
 
         if selected_show is not None and selected_show != show_id:
-            print("Ignoring config because not selected show:", repr(show_id))
+            logger.warning("Ignoring config because not selected show: %r", show_id)
             continue
 
         missing = base_keys - set(show_data)
@@ -191,21 +193,21 @@ def main(history_file_path, podcast_dir, config_file_path, base_public_url,
     try:
         config_data = load_config(config_file_path, selected_show)
     except ValueError as exc:
-        print("ERROR loading config:", exc)
+        logger.error("Problem loading config: %s", exc)
         exit()
 
-    print("Loaded config for shows", sorted(x.id for x in config_data))
+    logger.info("Loaded config for shows %s", sorted(x.id for x in config_data))
 
     for show_data in config_data:
-        print("Processing show", show_data.id)
+        logger.info("Processing show %s", show_data.id)
         last_process = history_file.get(show_data.id)
-        print("  last process: ", last_process)
+        logger.info("  last process: %s", last_process)
         if since is not None:
             last_process = since
-            print("  overridden by:", last_process)
+            logger.info("  overridden by: %s", last_process)
         if last_process is None:
-            print("ERROR: Must indicate a start point in time "
-                  "(through history file or --since parameter")
+            logger.error("Parameters problem: Must indicate a start point in time "
+                         "(through history file or --since parameter")
             exit()
         last_run = get_episodes(show_data, last_process, podcast_dir, base_public_url)
         history_file.set(show_data.id, last_run)
@@ -215,6 +217,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--since', help="A date (YYYY-MM--DD) to get stuff since.")
     parser.add_argument('--show', help="Work with this show only.")
+    parser.add_argument('--quiet', action='store_true', help="Be quiet, unless any issue is found")
     parser.add_argument('podcast_dir', help="The directory where podcast files will be stored")
     parser.add_argument('history_file', help="The file to store last run")
     parser.add_argument('config_file', help="The configuration file")
@@ -223,6 +226,8 @@ if __name__ == '__main__':
 
     # parse input
     since = None if args.since is None else dateutil.parser.parse(args.since)
+    if args.quiet:
+        logger.setLevel(logging.WARNING)
 
     main(args.history_file, args.podcast_dir, args.config_file, args.base_public_url,
          since, args.show)
