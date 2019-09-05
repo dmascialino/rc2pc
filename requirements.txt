@@ -3,4 +3,6 @@ croniter==0.3.17
 feedgen==0.5.1
 pytz==2016.10
 PyYAML==3.12
-git+https://github.com/mgaitan/radiocut_downloader.git@74492802bfb4cf6113b7127ecad15b88d9cdd11c
+pyquery
+moviepy
+docopt

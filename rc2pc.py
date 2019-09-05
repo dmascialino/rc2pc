@@ -22,7 +22,7 @@ logger.setLevel(logging.INFO)
 
 
 RADIOCUT_CMD = (
-    'radiocut http://radiocut.fm/radiostation/{station}/listen/{dt:%Y/%m/%d/%H/%M/%S}/ '
+    'python3 radiocut.py --verbose http://radiocut.fm/radiostation/{station}/listen/{dt:%Y/%m/%d/%H/%M/%S}/ '
     '"{filepath}" --duration={duration}'
 )
 
