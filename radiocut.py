@@ -102,6 +102,8 @@ def get_audiocut(url, verbose=False, duration=None):
     audios = [get_mp3(chunk, verbose=verbose) for chunk in chunks[first_chunk:last_chunk]]
     start_offset = float(seconds) - chunks[first_chunk]['start']
     cut = concatenate_audioclips(audios)
+    if verbose:
+        print("Subclipping:", start_offset, duration)
     cut = cut.subclip(start_offset, start_offset + float(duration))
     return cut
 
@@ -115,15 +117,15 @@ def get_urls_from_podcast(url, verbose=False):
 
 def get_mp3(chunk, verbose=False):
     url = chunk['base_url'] + '/' + chunk['filename']
+    _, temppath = tempfile.mkstemp('.mp3')
     if verbose:
-        print('Downloading chunk {}'.format(url))
+        print('Downloading chunk {} to {}'.format(url, temppath))
     r = requests.get(url, stream=True, headers=HEADERS)
     if r.status_code == 200:
-        _, p = tempfile.mkstemp('.mp3')
-        with open(p, 'wb') as f:
+        with open(temppath, 'wb') as f:
             for chunk in r.iter_content(1024):
                 f.write(chunk)
-        return AudioFileClip(p)
+        return AudioFileClip(temppath)
 
 
 def output_file_names(urls, given_filename=None, extension='mp3'):
@@ -138,6 +140,9 @@ def output_file_names(urls, given_filename=None, extension='mp3'):
 
 
 def write_output(audio_clip, output_filename, background=None, verbose=False):
+    if verbose:
+        print("Storing clip {} to {} (background={})".format(
+            audio_clip, output_filename, background))
 
     if not background:
         audio_clip.write_audiofile(
@@ -188,6 +193,8 @@ def main():
     extension = 'mp4' if background else 'mp3'
 
     if arguments['--join'] or is_audiocut:
+        if verbose:
+            print("Joining clips")
         audioclips = [concatenate_audioclips(audioclips)]
         output_filenames = output_file_names(
             [url],
