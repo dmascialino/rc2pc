@@ -22,9 +22,9 @@ from pyquery import PyQuery
 
 __version__ = '0.3'
 
-AUDIOCUT_PATTERN = re.compile('https?://radiocut\.fm/audiocut/[-\w]+/?')
-PODCAST_PATTERN = re.compile('https?://radiocut\.fm/pdc/[-\w]+/[-\w]+/?')
-RADIOSTATION_PATTERN = re.compile('https?://radiocut\.fm/radiostation/.*')
+AUDIOCUT_PATTERN = re.compile(r'https?://radiocut\.fm/audiocut/[-\w]+/?')
+PODCAST_PATTERN = re.compile(r'https?://radiocut\.fm/pdc/[-\w]+/[-\w]+/?')
+RADIOSTATION_PATTERN = re.compile(r'https?://radiocut\.fm/radiostation/.*')
 
 NOT_VALID_MSG = """
 The given URL is not a valid audiocut, podcast or timestamp from radiocut.fm.
@@ -34,8 +34,13 @@ Examples:
     - http://radiocut.fm/radiostation/nacional870/listen/2017/07/01/10/00/00/
 """
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:54.0) Gecko/20100101 Firefox/54.0',
+HEADERS_JSON = {
+    'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:74.0) Gecko/20100101 Firefox/74.0',
+}
+HEADERS_MP3 = {
+    'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:74.0) Gecko/20100101 Firefox/74.0',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
 }
 
 
@@ -66,15 +71,11 @@ def get_audiocut(url, verbose=False, duration=None):
     start_folder = int(seconds[:6])
     chunks = []
 
-    # add referer to the headers
-    headers = HEADERS.copy()
-    headers['Referer'] = url
-
     while True:
         chunks_url = get_chunks_url(base_url, station, start_folder)
         if verbose:
             print('Getting chunks index {}'.format(chunks_url))
-        chunks_json = requests.get(chunks_url, headers=HEADERS).json()[str(start_folder)]
+        chunks_json = requests.get(chunks_url, headers=HEADERS_JSON).json()[str(start_folder)]
         for chunk_data in chunks_json['chunks']:
             # set the base_url if isnt defined
             chunk_data['base_url'] = chunk_data.get('base_url', chunks_json['baseURL'])
@@ -120,12 +121,14 @@ def get_mp3(chunk, verbose=False):
     _, temppath = tempfile.mkstemp('.mp3')
     if verbose:
         print('Downloading chunk {} to {}'.format(url, temppath))
-    r = requests.get(url, stream=True, headers=HEADERS)
+    r = requests.get(url, stream=True, headers=HEADERS_MP3)
     if r.status_code == 200:
         with open(temppath, 'wb') as f:
             for chunk in r.iter_content(1024):
                 f.write(chunk)
         return AudioFileClip(temppath)
+    else:
+        print('Error {} when trying to download chunk {}'.format(r.status_code, url))
 
 
 def output_file_names(urls, given_filename=None, extension='mp3'):
