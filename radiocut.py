@@ -81,31 +81,33 @@ def get_audiocut(url, verbose=False, duration=None):
             chunk_data['base_url'] = chunk_data.get('base_url', chunks_json['baseURL'])
             chunks.append(chunk_data)
         c = chunks[-1]
+        if verbose:
+            print("Deciding len! seconds={!r} duration={!r} c={}".format(seconds, duration, c))
         if c['start'] + c['length'] > float(seconds) + float(duration):
             break
         # if the last chunk isn't in this index, get the next one
         start_folder += 1
 
     if verbose:
-        print(len(chunks))
+        print("Retrieved {} chunks".format(len(chunks)))
         print('Looking for first chunk')
     for i, c in enumerate(chunks):
         if c['start'] + c['length'] > float(seconds):
             first_chunk = i
             break
     if verbose:
+        print('    first:', first_chunk)
         print('Looking for last chunk')
     for i, c in enumerate(chunks[first_chunk:]):
         if c['start'] + c['length'] > float(seconds) + float(duration):
             last_chunk = min(len(chunks), first_chunk + i + 1)
             break
+    if verbose:
+        print('    last:', last_chunk)
 
     audios = [get_mp3(chunk, verbose=verbose) for chunk in chunks[first_chunk:last_chunk]]
     start_offset = float(seconds) - chunks[first_chunk]['start']
     cut = concatenate_audioclips(audios)
-    if verbose:
-        print("Subclipping:", start_offset, duration)
-    cut = cut.subclip(start_offset, start_offset + float(duration))
     return cut
 
 
