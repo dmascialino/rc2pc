@@ -2,7 +2,7 @@ bunch==1.0.1
 croniter==0.3.17
 feedgen==0.5.1
 pytz==2016.10
-PyYAML==3.12
+PyYAML==5.4
 pyquery
 moviepy
 docopt
