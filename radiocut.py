@@ -61,7 +61,8 @@ def get_audiocut(url, verbose=False, duration=None):
     if verbose:
         print('Retrieving {}'.format(url))
 
-    pq = PyQuery(url)
+    response = requests.get(url, headers=HEADERS_JSON)
+    pq = PyQuery(response.text)
     seconds = pq('li.audio_seconds').text()
     if duration is None:
         duration = float(pq('li.audio_duration').text())
