@@ -157,7 +157,7 @@ class HistoryFile:
 def load_config(config_file_path, selected_show):
     """Load the configuration file and validate format."""
     with open(config_file_path, 'rt', encoding='utf8') as fh:
-        from_config_file = yaml.load(fh)
+        from_config_file = yaml.safe_load(fh)
 
     if not isinstance(from_config_file, dict):
         raise ValueError("Bad general config format, must be a dict/map.")
